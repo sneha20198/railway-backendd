@@ -8,20 +8,26 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-/* ---------------- ROOT ---------------- */
+/* =========================================
+   ROOT CHECK
+========================================= */
 app.get("/", (req, res) => {
-  res.send("Backend running 🚀");
+  res.send("Enterprise Risk Intelligence Backend Running 🚀");
 });
 
-/* ---------------- TEST DB ---------------- */
+/* =========================================
+   DATABASE TEST
+========================================= */
 app.get("/api/test", (req, res) => {
   db.query("SELECT 1 + 1 AS solution", (err, results) => {
     if (err) return res.status(500).json({ error: err.message });
-    res.json(results);
+    res.json({ success: true, result: results });
   });
 });
 
-/* ---------------- CREATE TABLE ---------------- */
+/* =========================================
+   CREATE FEEDBACK TABLE
+========================================= */
 app.get("/api/create-table", (req, res) => {
   const sql = `
     CREATE TABLE IF NOT EXISTS feedback (
@@ -39,13 +45,144 @@ app.get("/api/create-table", (req, res) => {
   db.query(sql, (err) => {
     if (err) {
       console.error(err);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ success: false, error: err.message });
     }
-    res.send("Feedback table created successfully ✅");
+    res.json({ success: true, message: "Feedback table ready ✅" });
   });
 });
 
-/* ---------------- START SERVER ---------------- */
+/* =========================================
+   FEEDBACK ANALYSIS ENGINE
+========================================= */
+app.post("/api/feedback", (req, res) => {
+  const { employee_id, department, message } = req.body;
+
+  if (!department || !message) {
+    return res.status(400).json({
+      success: false,
+      error: "Department and message are required"
+    });
+  }
+
+  const text = message.toLowerCase();
+
+  const positiveWords = [
+    "good", "great", "happy", "excellent",
+    "satisfied", "improved", "smooth"
+  ];
+
+  const negativeWords = [
+    "bad", "poor", "angry", "frustrated",
+    "stress", "delay", "issue", "problem",
+    "overload", "burnout"
+  ];
+
+  let score = 0;
+
+  positiveWords.forEach(word => {
+    if (text.includes(word)) score += 1;
+  });
+
+  negativeWords.forEach(word => {
+    if (text.includes(word)) score -= 1;
+  });
+
+  let sentiment_score = 0;
+  if (score !== 0) {
+    sentiment_score = score / 5;
+  }
+
+  sentiment_score = Math.max(-1, Math.min(1, sentiment_score));
+
+  let risk_score = Math.round((1 - sentiment_score) * 50);
+  let volatility_score = Math.abs(sentiment_score) * 100;
+
+  const sql = `
+    INSERT INTO feedback
+    (employee_id, department, message, sentiment_score, risk_score, volatility_score)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `;
+
+  db.query(
+    sql,
+    [
+      employee_id || null,
+      department,
+      message,
+      sentiment_score,
+      risk_score,
+      volatility_score
+    ],
+    (err) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({
+          success: false,
+          error: "Database insertion failed"
+        });
+      }
+
+      res.json({
+        success: true,
+        analysis: {
+          sentiment_score,
+          risk_score,
+          volatility_score
+        }
+      });
+    }
+  );
+});
+
+/* =========================================
+   DASHBOARD OVERVIEW
+========================================= */
+app.get("/api/dashboard/overview", (req, res) => {
+  const sql = `
+    SELECT 
+      COUNT(*) AS total_feedback,
+      ROUND(AVG(risk_score), 2) AS avg_risk,
+      ROUND(AVG(sentiment_score), 2) AS avg_sentiment
+    FROM feedback
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) return res.status(500).json({ success: false, error: err.message });
+
+    res.json({
+      success: true,
+      data: results[0]
+    });
+  });
+});
+
+/* =========================================
+   DEPARTMENT RISK RANKING
+========================================= */
+app.get("/api/dashboard/department-risk", (req, res) => {
+  const sql = `
+    SELECT 
+      department,
+      COUNT(*) AS total_feedback,
+      ROUND(AVG(risk_score), 2) AS avg_risk
+    FROM feedback
+    GROUP BY department
+    ORDER BY avg_risk DESC
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) return res.status(500).json({ success: false, error: err.message });
+
+    res.json({
+      success: true,
+      departments: results
+    });
+  });
+});
+
+/* =========================================
+   START SERVER
+========================================= */
 app.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
