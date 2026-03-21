@@ -1,4 +1,6 @@
 
+require("dotenv").config(); // 👈 ADD THIS LINE
+
 const express = require("express");
 const cors = require("cors");
 
@@ -21,7 +23,6 @@ app.use("/api/dashboard", dashboardRoutes);
 app.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
-  
 
   
     
